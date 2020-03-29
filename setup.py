@@ -1,7 +1,10 @@
 import re
+import os
 from os.path import join
 from distutils.core import setup, Extension
 
+os.environ["CXX"] = "clang++"
+os.environ["CC"] = "clang"
 
 kwds = {}
 try:
@@ -26,7 +29,7 @@ setup(
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
         "Operating System :: OS Independent",
-        "Programming Language :: C",
+        "Programming Language :: C++",
         "Programming Language :: Python :: 2",
         "Programming Language :: Python :: 2.6",
         "Programming Language :: Python :: 2.7",
@@ -39,11 +42,15 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Topic :: Utilities",
     ],
-    description = "efficient arrays of booleans -- C extension",
+    description = "efficient arrays of booleans -- C++ extension",
     packages = ["bitarray"],
     ext_modules = [Extension(name = "bitarray._bitarray",
-                             sources = ["bitarray/_bitarray.c"]),
+                             sources = ["bitarray/_bitarray.cpp"],
+                             include_dirs = [
+                                 "ext/bit-algorithms/include", 
+                                 "ext/bit-algorithms/ext/bit"],
+                             extra_compile_args = ["-std=c++2a", "-Wwritable-strings"]),
                    Extension(name = "bitarray._util",
-                             sources = ["bitarray/_util.c"])],
+                             sources = ["bitarray/_util.cpp"])],
     **kwds
 )

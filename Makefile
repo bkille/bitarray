@@ -1,4 +1,7 @@
-bitarray/_bitarray.so: bitarray/_bitarray.c
+PYTHON="/home/bkille/packages/debug_python/bin/python3.7"
+
+
+bitarray/_bitarray.so: bitarray/_bitarray.cpp
 	$(PYTHON) setup.py build_ext --inplace
 
 

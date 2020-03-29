@@ -1,0 +1,3 @@
+[submodule "ext/bit-algorithms"]
+	path = ext/bit-algorithms
+	url = https://github.com/vreverdy/bit-algorithms.git
