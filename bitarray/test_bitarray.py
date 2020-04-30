@@ -9,7 +9,9 @@ import unittest
 import tempfile
 import shutil
 from random import randint
+import tracemalloc
 
+tracemalloc.start()
 is_py3k = bool(sys.version_info[0] == 3)
 
 # imports needed inside tests
