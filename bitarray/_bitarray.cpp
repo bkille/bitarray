@@ -350,7 +350,7 @@ search(bitarrayobject* self, bitarrayobject* pattern, idx_t start)
     if (pattern->nbits == 0) {
         return 0;
     }
-    auto ret_iter = std::search(
+    auto ret_iter = bit::search_shift_or(
         self->bits + start, 
         self->bits + self->nbits,
         pattern->bits, 
