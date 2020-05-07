@@ -39,6 +39,7 @@
 #include "bit.hpp"
 
 typedef long long int idx_t;
+typedef unsigned char word_type;
 
 /* throughout:  0 = little endian   1 = big endian */
 #define DEFAULT_ENDIAN  0
@@ -49,7 +50,7 @@ typedef long long int idx_t;
    machine.  */
 struct bitarrayobject {
     PyObject_VAR_HEAD
-    std::vector<unsigned char, PyAlloc<unsigned char> >* words;
+    std::vector<word_type, PyAlloc<word_type> >* words;
     bit::bit_iterator<decltype(std::begin(*words))> bits;
     long long nbits;   /* length of bitarray, i.e. elements */
     int endian;                 /* bit endianness of bitarray */
@@ -122,7 +123,7 @@ newbitarrayobject(PyTypeObject* type, idx_t nbits, int endian)
     Py_SIZE(obj) = nbytes;
     obj->nbits = nbits;
     obj->endian = endian;
-    obj->words = new std::vector<unsigned char, PyAlloc<unsigned char> >(nbytes, 0);
+    obj->words = new std::vector<word_type, PyAlloc<word_type> >(nbytes, 0);
     if (obj->words == NULL) {
         PyObject_Del(obj);
         PyErr_NoMemory();
@@ -273,16 +274,13 @@ bitwise(bitarrayobject *self, PyObject *arg, enum op_type oper)
     //setunused(other);
     switch (oper) {
     case OP_and:
-        for (i = 0; i < Py_SIZE(self); i++)
-            (*self->words)[i] &= (*other->words)[i];
+        bit::transform_and(self->bits, self->bits + self->nbits, other->bits, self->bits);
         break;
     case OP_or:
-        for (i = 0; i < Py_SIZE(self); i++)
-            (*self->words)[i] |= (*other->words)[i];
+        bit::transform_or(self->bits, self->bits + self->nbits, other->bits, self->bits);
         break;
     case OP_xor:
-        for (i = 0; i < Py_SIZE(self); i++)
-            (*self->words)[i] ^= (*other->words)[i];
+        bit::transform_xor(self->bits, self->bits + self->nbits, other->bits, self->bits);
         break;
     default:  /* should never happen */
         return -1;
@@ -385,8 +383,8 @@ set_item(bitarrayobject* self, idx_t i, PyObject *v)
 static int
 append_item(bitarrayobject* self, PyObject *item)
 {
-    if ((8*sizeof(unsigned char) * self->words->size()) == self->nbits) {
-        self->words->push_back(static_cast<unsigned char>(0));
+    if ((8*sizeof(word_type) * self->words->size()) == self->nbits) {
+        self->words->push_back(static_cast<word_type>(0));
         Py_SIZE(self) = self->words->size();
         self->bits = bit::bit_iterator(self->words->begin());
     }
@@ -2998,7 +2996,7 @@ bitdiff(PyObject *self, PyObject *args)
     PyObject *a, *b;
     Py_ssize_t i;
     idx_t res = 0;
-    unsigned char c;
+    word_type c;
 
     if (!PyArg_ParseTuple(args, "OO:bitdiff", &a, &b))
         return NULL;
