@@ -36,15 +36,13 @@ Installation
 
 Bitarray can be installed from source:
 
-    $ tar xzf bitarray-1.2.1.tar.gz
-    $ cd bitarray-1.2.1
-    $ python setup.py install
+    $ python setup.py build_ext --inplace
 
 On Unix systems, the latter command may have to be executed with root
 privileges.  You can also pip install bitarray.
 Once you have installed the package, you may want to test it:
 
-    $ python -c 'import bitarray; bitarray.test()'
+    $ python tests_for_nonendian.py
     bitarray is installed in: /usr/local/lib/python2.7/site-packages/bitarray
     bitarray version: 1.2.1
     3.7.4 (r271:86832, Dec 29 2018) [GCC 4.2.1 (SUSE Linux)]
