@@ -19,11 +19,19 @@
 #define PyLong_FromLong  PyInt_FromLong
 #endif
 
+#include <vector>
+#include "_allocator.hpp"
+#include "bit.hpp"
+
+typedef long long int idx_t;
+typedef unsigned long long int word_type;
+
 /* ob_size is the byte count of the buffer, not the number of elements.
    The number of elements (bits) is nbits. */
 typedef struct {
     PyObject_VAR_HEAD
-    char *ob_item;              /* buffer */
+    std::vector<word_type, PyAlloc<word_type> >* ob_item;
+    bit::bit_iterator<decltype(std::begin(*words))> bits;
     Py_ssize_t allocated;       /* how many bytes allocated */
     Py_ssize_t nbits;           /* length of bitarray, i.e. elements */
     int endian;                 /* bit endianness of bitarray */
@@ -49,51 +57,20 @@ typedef struct {
 
 /* ------------ low level access to bits in bitarrayobject ------------- */
 
-#ifndef NDEBUG
-static inline int GETBIT(bitarrayobject *self, Py_ssize_t i) {
-    assert(0 <= i && i < self->nbits);
-    return ((self)->ob_item[(i) / 8] & BITMASK((self)->endian, i) ? 1 : 0);
-}
-#else
-#define GETBIT(self, i)  \
-    ((self)->ob_item[(i) / 8] & BITMASK((self)->endian, i) ? 1 : 0)
-#endif
-
-static inline void
-setbit(bitarrayobject *self, Py_ssize_t i, int bit)
-{
-    char *cp, mask;
-
-    assert(0 <= i && i < BITS(Py_SIZE(self)));
-    mask = BITMASK(self->endian, i);
-    cp = self->ob_item + i / 8;
-    if (bit)
-        *cp |= mask;
-    else
-        *cp &= ~mask;
-}
-
 /* sets unused padding bits (within last byte of buffer) to 0,
    and return the number of padding bits -- self->nbits is unchanged */
 static inline int
-setunused(bitarrayobject *self)
+setunused(bitarrayobject* self)
 {
-    const char mask[16] = {
-        /* elements 0 and 8 (with value 0x00) are never accessed */
-        0x00, 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, /* little endian */
-        0x00, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe, /* big endian */
-    };
-    int res;
+    const idx_t n = BITS(Py_SIZE(self));
+    idx_t i;
+    int res = 0;
 
-    if (self->nbits % 8 == 0)
-        return 0;
-
-    res = (int) (BITS(Py_SIZE(self)) - self->nbits);
-    assert(0 < res && res < 8);
-    /* apply the appropriate mask to the last byte in buffer */
-    self->ob_item[Py_SIZE(self) - 1] &=
-        mask[self->nbits % 8 + (self->endian == ENDIAN_LITTLE ? 0 : 8)];
-
+    for (i = self->nbits; i < n; i++) {
+        self->bits[i] = bit::bit0;
+        res++;
+    }
+    assert(res < 8);
     return res;
 }
 
