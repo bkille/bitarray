@@ -48,6 +48,7 @@ setup(
                              sources = ["bitarray/_bitarray.cpp"],
                              include_dirs = [
                                  "ext/bit-algorithms/include", 
+                                 "ext/bit-algorithms/ext/libsimdpp", 
                                  "ext/bit-algorithms/ext/bit"],
                              extra_compile_args = ["-std=c++2a", "-Wwritable-strings", "-march=native"])],
     **kwds
