@@ -39,7 +39,7 @@
 #include "bit.hpp"
 
 typedef long long int idx_t;
-typedef unsigned char word_type;
+typedef unsigned long long int word_type;
 
 /* throughout:  0 = little endian   1 = big endian */
 #define DEFAULT_ENDIAN  0
@@ -274,13 +274,16 @@ bitwise(bitarrayobject *self, PyObject *arg, enum op_type oper)
     //setunused(other);
     switch (oper) {
     case OP_and:
-        bit::transform_and(self->bits, self->bits + self->nbits, other->bits, self->bits);
+        for (i = 0; i < Py_SIZE(self); i++)
+            (*self->words)[i] &= (*other->words)[i];
         break;
     case OP_or:
-        bit::transform_or(self->bits, self->bits + self->nbits, other->bits, self->bits);
+        for (i = 0; i < Py_SIZE(self); i++)
+            (*self->words)[i] |= (*other->words)[i];
         break;
     case OP_xor:
-        bit::transform_xor(self->bits, self->bits + self->nbits, other->bits, self->bits);
+        for (i = 0; i < Py_SIZE(self); i++)
+            (*self->words)[i] ^= (*other->words)[i];
         break;
     default:  /* should never happen */
         return -1;
@@ -348,7 +351,7 @@ search(bitarrayobject* self, bitarrayobject* pattern, idx_t start)
     if (pattern->nbits == 0) {
         return 0;
     }
-    auto ret_iter = bit::search_shift_or(
+    auto ret_iter = bit::search(
         self->bits + start, 
         self->bits + self->nbits,
         pattern->bits, 
