@@ -56,7 +56,7 @@ count_to_n(bitarrayobject *a, Py_ssize_t n)
         block_stop = block_start + (BLOCK_BITS / 8);
         for (k = block_start; k < block_stop; k++) {
             assert(k < Py_SIZE(a));
-            c = a->ob_item[k];
+            c = (*a->ob_item)[k];
             m += bitcount_lookup[c];
         }
         if (j + m >= n)
@@ -69,7 +69,7 @@ count_to_n(bitarrayobject *a, Py_ssize_t n)
     while (i + 8 < a->nbits) {
         k = i / 8;
         assert(k < Py_SIZE(a));
-        c = a->ob_item[k];
+        c = (*a->ob_item)[k];
         m = bitcount_lookup[c];
         if (j + m >= n)
             break;
@@ -112,7 +112,7 @@ find_last(bitarrayobject *a, int vi)
 
     /* skip ahead by checking whole bytes */
     for (j = BYTES(i) - 1; j >= 0; j--)
-        if (c ^ a->ob_item[j])
+        if (c ^ (*a->ob_item)[j])
             break;
 
     if (j < 0)  /* not found within bytes */
@@ -135,7 +135,8 @@ make_swap_hilo_bytes(void)
     int i;
 
     for (i = 0; i < 256; i++)
-        bytes[i] = (char) (((i & 0x0f) << 4) ^ (i >> 4));
+        continue;
+        //bytes[i] = (char) (((i & 0x0f) << 4) ^ (i >> 4));
 
     return PyBytes_FromStringAndSize(bytes, 256);
 }
@@ -245,25 +246,25 @@ two_bitarray_func(PyObject *args, enum kernel_type kern, char *format)
     switch (kern) {
     case KERN_cand:
         for (i = 0; i < nbytes; i++) {
-            c = aa->ob_item[i] & bb->ob_item[i];
+            c = (*aa->ob_item)[i] & (*bb->ob_item)[i];
             res += bitcount_lookup[c];
         }
         break;
     case KERN_cor:
         for (i = 0; i < nbytes; i++) {
-            c = aa->ob_item[i] | bb->ob_item[i];
+            c = (*aa->ob_item)[i] | (*bb->ob_item)[i];
             res += bitcount_lookup[c];
         }
         break;
     case KERN_cxor:
         for (i = 0; i < nbytes; i++) {
-            c = aa->ob_item[i] ^ bb->ob_item[i];
+            c = (*aa->ob_item)[i] ^ (*bb->ob_item)[i];
             res += bitcount_lookup[c];
         }
         break;
     case KERN_subset:
         for (i = 0; i < nbytes; i++) {
-            if ((aa->ob_item[i] & bb->ob_item[i]) != aa->ob_item[i])
+            if (((*aa->ob_item)[i] & (*bb->ob_item)[i]) != (*aa->ob_item)[i])
                 Py_RETURN_FALSE;
         }
         Py_RETURN_TRUE;

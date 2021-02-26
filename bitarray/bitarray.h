@@ -31,7 +31,7 @@ typedef unsigned long long int word_type;
 typedef struct {
     PyObject_VAR_HEAD
     std::vector<word_type, PyAlloc<word_type> >* ob_item;
-    bit::bit_iterator<decltype(std::begin(*words))> bits;
+    bit::bit_iterator<decltype(std::begin(*ob_item))> bits;
     Py_ssize_t allocated;       /* how many bytes allocated */
     Py_ssize_t nbits;           /* length of bitarray, i.e. elements */
     int endian;                 /* bit endianness of bitarray */
@@ -57,6 +57,22 @@ typedef struct {
 
 /* ------------ low level access to bits in bitarrayobject ------------- */
 
+#ifndef NDEBUG
+static inline int GETBIT(bitarrayobject *self, Py_ssize_t i) {
+    assert(0 <= i && i < self->nbits);
+    return self->bits[i] ? 1 : 0;
+}
+#else
+#define GETBIT(self, i)  \
+    (self->bits[i] ? 1 : 0)
+#endif
+
+static inline void
+setbit(bitarrayobject *self, Py_ssize_t i, int bit)
+{
+    assert(0 <= i && i < BITS(Py_SIZE(self)));
+    self->bits[i] = bit ? bit::bit1 : bit::bit0;
+}
 /* sets unused padding bits (within last byte of buffer) to 0,
    and return the number of padding bits -- self->nbits is unchanged */
 static inline int

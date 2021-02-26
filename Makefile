@@ -1,16 +1,12 @@
-PYTHON=python
+PYTHON="/home/bkille/packages/debug_python/bin/python3.7"
 
 
-bitarray/_bitarray.so: bitarray/_bitarray.c
+bitarray/_bitarray.so: bitarray/_bitarray.cpp
 	$(PYTHON) setup.py build_ext --inplace
 
 
 test: bitarray/_bitarray.so
 	$(PYTHON) -c "import bitarray; bitarray.test()"
-
-
-install:
-	$(PYTHON) setup.py install
 
 
 doc: bitarray/_bitarray.so

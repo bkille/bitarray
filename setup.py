@@ -1,6 +1,10 @@
 import re
+import os
+from os.path import join
 from distutils.core import setup, Extension
 
+os.environ["CXX"] = "g++"
+os.environ["CC"] = "gcc"
 
 kwds = {}
 try:
@@ -8,10 +12,10 @@ try:
 except IOError:
     pass
 
-# Read version from bitarray/bitarray.h
-pat = re.compile(r'#define\s+BITARRAY_VERSION\s+"(\S+)"', re.M)
-data = open('bitarray/bitarray.h').read()
-kwds['version'] = pat.search(data).group(1)
+# Read version from bitarray/__init__.py
+pat = re.compile(r'__version__\s*=\s*(\S+)', re.M)
+data = open(join('bitarray', '__init__.py')).read()
+kwds['version'] = "0.1"
 
 
 setup(
@@ -25,24 +29,34 @@ setup(
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
         "Operating System :: OS Independent",
-        "Programming Language :: C",
+        "Programming Language :: C++",
         "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 2.6",
         "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.3",
+        "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
         "Topic :: Utilities",
     ],
-    description = "efficient arrays of booleans -- C extension",
+    description = "efficient arrays of booleans -- C++ extension",
     packages = ["bitarray"],
-    package_data = {"bitarray": ["*.h"]},
     ext_modules = [Extension(name = "bitarray._bitarray",
-                             sources = ["bitarray/_bitarray.c"]),
+                             sources = ["bitarray/_bitarray.cpp"],
+                             include_dirs = [
+                                 "ext/bit-algorithms/include", 
+                                 "ext/bit-algorithms/ext/libsimdpp", 
+                                 "ext/bit-algorithms/ext/bit"],
+                             extra_compile_args = ["-g", "-std=c++17", "-Wwrite-strings"]),
                    Extension(name = "bitarray._util",
-                             sources = ["bitarray/_util.c"])],
+                             sources = ["bitarray/_util.cpp"],
+                             include_dirs = [
+                                 "ext/bit-algorithms/include", 
+                                 "ext/bit-algorithms/ext/libsimdpp", 
+                                 "ext/bit-algorithms/ext/bit"],
+                             extra_compile_args = ["-g", "-std=c++17", "-Wwrite-strings"])],
     **kwds
 )
