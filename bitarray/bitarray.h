@@ -51,6 +51,7 @@ typedef struct {
 
 /* number of bytes necessary to store given bits */
 #define BYTES(bits)  ((bits) == 0 ? 0 : (((bits) - 1) / 8 + 1))
+#define WORDS(bits) ((bits) == 0 ? 0 : (((bits) - 1) / (8*sizeof(word_type)) + 1))
 
 #define BITMASK(endian, i)  \
     (((char) 1) << ((endian) == ENDIAN_LITTLE ? ((i) % 8) : (7 - (i) % 8)))
@@ -79,6 +80,8 @@ static inline int
 setunused(bitarrayobject* self)
 {
     const idx_t n = BITS(Py_SIZE(self));
+    //std::cout << "PySIZE= " << Py_SIZE(self) << " idx: " << n << " but selfnb = " << self->nbits << std::endl;
+    //std::cout << "And vec size is " << self->ob_item->size() << std::endl;
     idx_t i;
     int res = 0;
 
@@ -86,7 +89,7 @@ setunused(bitarrayobject* self)
         self->bits[i] = bit::bit0;
         res++;
     }
-    assert(res < 8);
+    assert(res < sizeof(word_type));
     return res;
 }
 

@@ -42,12 +42,21 @@ static int
 resize(bitarrayobject* self, idx_t nbits)
 {
     long long old_nbits = self->nbits;
-    self->ob_item->resize(BYTES(nbits));
+    if (nbits < 0 || WORDS(nbits < 0) || BITS(WORDS(nbits)) < 0) {
+        PyErr_Format(PyExc_OverflowError, "bitarray resize %zd", nbits);
+        return -1;
+    }
+    if (self->ob_exports > 0) {
+        PyErr_SetString(PyExc_BufferError,
+                        "cannot resize bitarray that is exporting buffers");
+        return -1;
+    }
+    self->ob_item->resize(WORDS(nbits));
     if (nbits < old_nbits) {
         self->ob_item->shrink_to_fit();
     }
     self->nbits = nbits;
-    Py_SET_SIZE(self, self->ob_item->size());
+    Py_SET_SIZE(self, self->ob_item->size() * sizeof(word_type));
     self->bits = bit::bit_iterator(self->ob_item->begin());
     return 0;
 }
@@ -64,11 +73,11 @@ newbitarrayobject(PyTypeObject* type, idx_t nbits, int endian)
     if (obj == NULL)
         return NULL;
 
-    nbytes = (Py_ssize_t) BYTES(nbits);
-    Py_SET_SIZE(obj, nbytes);
+    idx_t nwords = WORDS(nbits);
+    Py_SET_SIZE(obj, nwords * sizeof(word_type));
     obj->nbits = nbits;
     obj->endian = endian;
-    obj->ob_item = new std::vector<word_type, PyAlloc<word_type> >(nbytes, 0);
+    obj->ob_item = new std::vector<word_type, PyAlloc<word_type> >(nwords, 0);
     if (obj->ob_item == NULL) {
         PyObject_Del(obj);
         PyErr_NoMemory();
@@ -106,7 +115,7 @@ copy_n(bitarrayobject* self, idx_t a,
     // TODO has to be a better way to do this...
     if (self->bits + a < other->bits + b 
             || self->bits + a >= other->bits + b + n) {
-        bit::copy(
+        std::copy(
             other->bits + b, 
             other->bits + b + n, 
             self->bits + a
@@ -132,7 +141,8 @@ delete_n(bitarrayobject *self, Py_ssize_t start, Py_ssize_t n)
     if (n == 0)
         return 0;
 
-    copy_n(self, start, self, start + n, self->nbits - start - n);
+    //copy_n(self, start, self, start + n, self->nbits - start - n);
+    bit::shift_left(self->bits + start, self->bits + self->nbits, n);
     return resize(self, self->nbits - n);
 }
 
@@ -154,10 +164,10 @@ insert_n(bitarrayobject *self, Py_ssize_t start, Py_ssize_t n)
 static void
 invert(bitarrayobject *self)
 {
-    const Py_ssize_t nbytes = Py_SIZE(self);
+    const Py_ssize_t nwords = WORDS(self->nbits);
     Py_ssize_t i;
 
-    for (i = 0; i < nbytes; i++)
+    for (i = 0; i < nwords; i++)
         (*self->ob_item)[i] = ~(*self->ob_item)[i];
 }
 
@@ -202,13 +212,13 @@ count(bitarrayobject* self, int val, idx_t start, idx_t stop)
     assert(0 <= stop && stop <= self->nbits);
     assert(0 <= val && val <= 1);
     assert(BYTES(stop) <= Py_SIZE(self));
-    if (start <= stop) {
+    if (start >= stop) {
         return 0;
     }
 
     return bit::count(
-        bit::next(self->bits, start), 
-        bit::next(self->bits, stop), 
+        self->bits + start, 
+        self->bits + stop, 
         val ? bit::bit1 : bit::bit0
     );
 }
@@ -244,7 +254,7 @@ search(bitarrayobject* self, bitarrayobject* pattern, idx_t start)
     if (pattern->nbits == 0) {
         return 0;
     }
-    auto ret_iter = bit::search(
+    auto ret_iter = std::search(
         self->bits + start, 
         self->bits + self->nbits,
         pattern->bits, 
@@ -273,7 +283,7 @@ append_item(bitarrayobject* self, PyObject *item)
 {
     if ((8*sizeof(word_type) * self->ob_item->size()) == self->nbits) {
         self->ob_item->push_back(static_cast<word_type>(0));
-        Py_SIZE(self) = self->ob_item->size();
+        Py_SIZE(self) = self->ob_item->size() * sizeof(word_type);
         self->bits = bit::bit_iterator(self->ob_item->begin());
     }
     self->nbits += 1;
@@ -397,6 +407,44 @@ extend_01(bitarrayobject *self, PyObject *bytes)
     }
     return 0;
 }
+static int 
+extend_bytes(bitarrayobject *self, PyObject *bytes) {
+    Py_ssize_t nbytes;
+    Py_ssize_t t, p;
+
+    nbytes = PyBytes_GET_SIZE(bytes);
+    if (nbytes == 0)
+        return 1;
+
+    /* Before we extend the raw bytes with the new data, we need to store
+       the current size and pad the last byte, as our bitarray size might
+       not be a multiple of 8.  After extending, we remove the padding
+       bits again.
+    */
+    t = self->nbits;
+    p = setunused(self);
+    self->nbits += p;
+    assert(self->nbits % 8 == 0);
+
+    if (resize(self, self->nbits + BITS(nbytes)) < 0)
+        return -1;
+
+
+    auto bytes_as_str = PyBytes_AsString(bytes);
+    auto pystr_begin = bit::bit_iterator<unsigned char *>(
+            reinterpret_cast<unsigned char *>(bytes_as_str));
+    auto pystr_end = bit::bit_iterator<unsigned char *>(
+            reinterpret_cast<unsigned char *>(bytes_as_str + nbytes));
+    for (auto it = pystr_begin.base(); it != pystr_end.base(); ++it) {
+        *it = bit::_bitswap(*it);
+    }
+    bit::copy(pystr_begin, pystr_end, self->bits + t);
+
+    if (delete_n(self, t, p) < 0)
+        return -1;
+    return 0;
+}
+
 
 static int
 extend_dispatch(bitarrayobject *self, PyObject *obj)
@@ -414,16 +462,6 @@ extend_dispatch(bitarrayobject *self, PyObject *obj)
     if (PyTuple_Check(obj))                                  /* tuple */
         return extend_tuple(self, obj);
 
-    if (PyBytes_Check(obj)) {                             /* bytes 01 */
-#ifdef IS_PY3K
-        PyErr_SetString(PyExc_TypeError,
-                        "cannot extend bitarray with 'bytes', "
-                        "use .pack() or .frombytes() instead");
-        return -1;
-#else
-        return extend_01(self, obj);
-#endif
-    }
 
     if (PyUnicode_Check(obj)) {                /* (unicode) string 01 */
         PyObject *bytes;
@@ -435,6 +473,18 @@ extend_dispatch(bitarrayobject *self, PyObject *obj)
         res = extend_01(self, bytes);
         Py_DECREF(bytes);  /* drop bytes */
         return res;
+    }
+
+    if (PyBytes_Check(obj)) {                             /* bytes 01 */
+#ifdef IS_PY3K
+        PyErr_SetString(PyExc_TypeError,
+                        "cannot extend bitarray with 'bytes', "
+                        "use .pack() or .frombytes() instead");
+        return -1;
+        //return extend_bytes(self, obj);
+#else
+        return extend_01(self, obj);
+#endif
     }
 
     if (PyIter_Check(obj))                                    /* iter */
@@ -561,8 +611,9 @@ bitarray_copy(bitarrayobject *self)
     if (res == NULL)
         return NULL;
 
-    memcpy(&(*((bitarrayobject *) res)->ob_item)[0], &(*self->ob_item)[0],
-           (size_t) Py_SIZE(self));
+    //memcpy(&(*((bitarrayobject *) res)->ob_item)[0], &(*self->ob_item)[0],
+           //(size_t) Py_SIZE(self) / sizeof(word_type));
+    bit::copy(self->bits, self->bits + self->nbits, ((bitarrayobject *)res)->bits);
     return res;
 }
 
@@ -712,7 +763,7 @@ bitarray_buffer_info(bitarrayobject *self)
                         Py_SIZE(self),
                         ENDIAN_STR(self),
                         (int) (BITS(Py_SIZE(self)) - self->nbits),
-                        self->allocated);
+                        self->ob_item->capacity() * sizeof(word_type));
     Py_DECREF(ptr);
     return res;
 }
@@ -812,34 +863,14 @@ bitarray_reduce(bitarrayobject *self)
 
 PyDoc_STRVAR(reduce_doc, "state information for pickling");
 
-
 static PyObject *
 bitarray_reverse(bitarrayobject *self)
 {
-    const Py_ssize_t m = self->nbits - 1;     /* index of last item */
-    PyObject *t;       /* temp bitarray to store lower half of self */
-    Py_ssize_t i;
 
-    if (self->nbits < 2)        /* nothing needs to be done */
+    if (self->nbits < 2)
         Py_RETURN_NONE;
 
-    t = newbitarrayobject(Py_TYPE(self), self->nbits / 2, self->endian);
-    if (t == NULL)
-        return NULL;
-
-#define tt  ((bitarrayobject *) t)
-    /* copy lower half of array into temporary array */
-    memcpy(&(*tt->ob_item)[0], &(*self->ob_item)[0], (size_t) Py_SIZE(tt));
-
-    /* reverse upper half onto the lower half. */
-    for (i = 0; i < tt->nbits; i++)
-        setbit(self, i, GETBIT(self, m - i));
-
-    /* reverse the stored away lower half onto the upper half of self. */
-    for (i = 0; i < tt->nbits; i++)
-        setbit(self, m - i, GETBIT(tt, i));
-#undef tt
-    Py_DECREF(t);
+    std::reverse(self->bits, bit::next(self->bits, self->nbits));
     Py_RETURN_NONE;
 }
 
@@ -854,9 +885,17 @@ bitarray_fill(bitarrayobject *self)
 {
     long p;
 
-    p = setunused(self);
-    self->nbits += p;
-    return PyLong_FromLong(p);
+    int mod = self->nbits % 8;
+    int to_fill = 8 - (self->nbits % 8);
+    to_fill = to_fill == 8 ? 0 : to_fill;
+    resize(self, self->nbits + to_fill);
+    //setrange(self, self->nbits - to_fill, self->nbits, 1);
+    return PyLong_FromLong(to_fill);
+    
+
+    //p = setunused(self);
+    //self->nbits += p;
+    //return PyLong_FromLong(p);
 }
 
 PyDoc_STRVAR(fill_doc,
@@ -886,7 +925,8 @@ bitarray_invert(bitarrayobject *self, PyObject *args)
         PyErr_SetString(PyExc_IndexError, "index out of range");
         return NULL;
     }
-    setbit(self, i, 1 - GETBIT(self, i));
+    //setbit(self, i, 1 - GETBIT(self, i));
+    self->bits[i] = ~self->bits[i];
     Py_RETURN_NONE;
 }
 
@@ -899,9 +939,8 @@ When the optional `index` is given, only invert the single bit at index.");
 static PyObject *
 bitarray_bytereverse(bitarrayobject *self)
 {
-    for (auto it = self->ob_item->begin(); it != self->ob_item->end(); ++it) {
-        //*it ~= *it;
-        continue;
+    for (auto it = (unsigned char*) &(*self->ob_item)[0]; it < (unsigned char*) &(*self->ob_item->end()); ++it) {
+        *it = bit::_bitswap(*it);
     }
     Py_RETURN_NONE;
 }
@@ -910,6 +949,22 @@ PyDoc_STRVAR(bytereverse_doc,
 "bytereverse()\n\
 \n\
 For all bytes representing the bitarray, reverse the bit order (in-place).\n\
+Note: This method changes the actual machine values representing the\n\
+bitarray; it does not change the endianness of the bitarray object.");
+
+static PyObject *
+bitarray_byteswap(bitarrayobject *self)
+{
+    for (auto it = &(*self->ob_item)[0]; it < &(*self->ob_item->end()); ++it) {
+        *it = bit::_byteswap(*it);
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(byteswap_doc,
+"byteswap()\n\
+\n\
+For all words representing the bitarray, reverse the byte order (in-place).\n\
 Note: This method changes the actual machine values representing the\n\
 bitarray; it does not change the endianness of the bitarray object.");
 
@@ -1001,35 +1056,13 @@ which may cause a memory error if the bitarray is very large.");
 static PyObject *
 bitarray_frombytes(bitarrayobject *self, PyObject *bytes)
 {
-    Py_ssize_t nbytes;
-    Py_ssize_t t, p;
-
     if (!PyBytes_Check(bytes)) {
         PyErr_SetString(PyExc_TypeError, "bytes expected");
         return NULL;
     }
-    nbytes = PyBytes_GET_SIZE(bytes);
-    if (nbytes == 0)
-        Py_RETURN_NONE;
+    //TODO catch errors from extend_bytes
+    extend_bytes(self, bytes);
 
-    /* Before we extend the raw bytes with the new data, we need to store
-       the current size and pad the last byte, as our bitarray size might
-       not be a multiple of 8.  After extending, we remove the padding
-       bits again.
-    */
-    t = self->nbits;
-    p = setunused(self);
-    self->nbits += p;
-    assert(self->nbits % 8 == 0);
-
-    if (resize(self, self->nbits + BITS(nbytes)) < 0)
-        return NULL;
-
-    memcpy(&(*self->ob_item)[0] + (Py_SIZE(self) - nbytes),
-       PyBytes_AsString(bytes), (size_t) nbytes);
-
-    if (delete_n(self, t, p) < 0)
-        return NULL;
     Py_RETURN_NONE;
 }
 
@@ -1044,7 +1077,10 @@ static PyObject *
 bitarray_tobytes(bitarrayobject *self)
 {
     setunused(self);
-    return PyBytes_FromStringAndSize((char*)(&(*self->ob_item)[0]), Py_SIZE(self));
+    //bitarray_byteswap(self);
+    auto ret = PyBytes_FromStringAndSize((char*)(&(*self->ob_item)[0]), BYTES(self->nbits));
+    //bitarray_byteswap(self);
+    return ret;
 }
 
 PyDoc_STRVAR(tobytes_doc,
@@ -1346,7 +1382,7 @@ bitarray_sizeof(bitarrayobject *self)
 {
     Py_ssize_t res;
 
-    res = sizeof(bitarrayobject) + self->allocated;
+    res = sizeof(bitarrayobject) + self->ob_item->capacity() * sizeof(word_type);
     return PyLong_FromSsize_t(res);
 }
 
@@ -1559,8 +1595,9 @@ setslice_bitarray(bitarrayobject *self, PyObject *slice, PyObject *array)
             goto error;
         }
         assert(increase == 0);
-        for (i = 0, j = start; i < slicelength; i++, j += step)
-            setbit(self, j, GETBIT(aa, i));
+        for (i = 0, j = start; i < slicelength; i++, j += step) {
+            self->bits[j] = aa->bits[i];
+        }
     }
 #undef aa
 
@@ -1628,8 +1665,10 @@ delslice(bitarrayobject *self, PyObject *slice)
         Py_ssize_t i, j;
         /* Now step > 1.  We set the items not to be removed. */
         for (i = j = start; i < self->nbits; i++) {
-            if ((i - start) % step != 0 || i >= stop)
-                setbit(self, j++, GETBIT(self, i));
+            if ((i - start) % step != 0 || i >= stop) {
+                self->bits[j++] = self->bits[i];
+                //setbit(self, j++, GETBIT(self, i));
+            }
         }
         return resize(self, self->nbits - slicelength);
     }
@@ -1697,7 +1736,7 @@ enum op_type {
 static int
 bitwise(bitarrayobject *self, PyObject *arg, enum op_type oper)
 {
-    const Py_ssize_t nbytes = Py_SIZE(self);
+    const Py_ssize_t nwords = WORDS(self->nbits);
     bitarrayobject *other;
     Py_ssize_t i;
 
@@ -1716,15 +1755,15 @@ bitwise(bitarrayobject *self, PyObject *arg, enum op_type oper)
     setunused(other);
     switch (oper) {
     case OP_and:
-        for (i = 0; i < nbytes; i++)
+        for (i = 0; i < nwords; i++)
             (*self->ob_item)[i] &= (*other->ob_item)[i];
         break;
     case OP_or:
-        for (i = 0; i < nbytes; i++)
+        for (i = 0; i < nwords; i++)
             (*self->ob_item)[i] |= (*other->ob_item)[i];
         break;
     case OP_xor:
-        for (i = 0; i < nbytes; i++)
+        for (i = 0; i < nwords; i++)
             (*self->ob_item)[i] ^= (*other->ob_item)[i];
         break;
     default:                    /* cannot happen */
@@ -2685,8 +2724,7 @@ bitarray_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
                                 endian_str == NULL ? np->endian : endian);
         if (res == NULL)
             return NULL;
-        memcpy(&(*((bitarrayobject *) res)->ob_item)[0], &(*np->ob_item)[0],
-               (size_t) Py_SIZE(np));
+        bit::copy(np->bits, np->bits + np->nbits, ((bitarrayobject *)res)->bits); 
 #undef np
         return res;
     }
@@ -2715,8 +2753,9 @@ bitarray_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
                                     endian);
             if (res == NULL)
                 return NULL;
-            memcpy(&(*((bitarrayobject *) res)->ob_item)[0], data + 1,
+            memcpy((char*)&(*((bitarrayobject *) res)->ob_item)[0], data + 1,
                    (size_t) nbytes - 1);
+            bitarray_bytereverse((bitarrayobject*) res);
             return res;
         }
     }
@@ -2756,7 +2795,8 @@ richcompare(PyObject *v, PyObject *w, int op)
             /* sizes and endianness are the same - use memcmp() */
             setunused(va);
             setunused(wa);
-            cmp = memcmp(&(*va->ob_item)[0], &(*wa->ob_item)[0], (size_t) Py_SIZE(v));
+            //cmp = memcmp(&(*va->ob_item)[0], &(*wa->ob_item)[0], (size_t) Py_SIZE(v)/sizeof(word_type));
+            cmp = not std::equal(va->bits, va->bits + va->nbits, wa->bits);
             return PyBool_FromLong((long) ((cmp == 0) ^ (op == Py_NE)));
         }
     }
@@ -2913,7 +2953,7 @@ bitarray_buffer_getreadbuf(bitarrayobject *self,
         PyErr_SetString(PyExc_SystemError, "accessing non-existent segment");
         return -1;
     }
-    *ptr = (void *) self->ob_item;
+    *ptr = &(*self->ob_item)[0];
     return Py_SIZE(self);
 }
 
@@ -2925,7 +2965,7 @@ bitarray_buffer_getwritebuf(bitarrayobject *self,
         PyErr_SetString(PyExc_SystemError, "accessing non-existent segment");
         return -1;
     }
-    *ptr = (void *) self->ob_item;
+    *ptr = &(*self->ob_item)[0];
     return Py_SIZE(self);
 }
 
@@ -2945,7 +2985,7 @@ bitarray_buffer_getcharbuf(bitarrayobject *self,
         PyErr_SetString(PyExc_SystemError, "accessing non-existent segment");
         return -1;
     }
-    *ptr = self->ob_item;
+    *ptr = &(*self->ob_item)[0];
     return Py_SIZE(self);
 }
 
@@ -2961,7 +3001,7 @@ bitarray_getbuffer(bitarrayobject *self, Py_buffer *view, int flags)
         self->ob_exports++;
         return 0;
     }
-    ptr = (void *) self->ob_item;
+    ptr = (void *) &(*self->ob_item)[0];
     ret = PyBuffer_FillInfo(view, (PyObject *) self, ptr,
                             Py_SIZE(self), 0, flags);
     if (ret >= 0) {
