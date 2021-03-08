@@ -46,7 +46,7 @@ class Util(object):
     def randombitarrays(start=0):
         for n in list(range(start, 70)) + [randint(1000, 2000)]:
             # a = bitarray(endian=['little', 'big'][randint(0, 1)])
-            a = bitarray(endian="big")
+            a = bitarray(endian="little")
             a.frombytes(os.urandom(bits2bytes(n)))
             del a[n:]
             yield a
@@ -179,30 +179,30 @@ class CreateObjectTests(unittest.TestCase, Util):
         self.check_obj(a)
 
     def test_endian(self):
-        # a = bitarray(endian='little')
-        # a.frombytes(b'ABC')
-        # self.assertEqual(a.endian(), 'little')
-        # self.assertIsInstance(a.endian(), str)
-        # self.check_obj(a)
+        a = bitarray(endian='little')
+        a.frombytes(b'ABC')
+        self.assertEqual(a.endian(), 'little')
+        self.assertIsInstance(a.endian(), str)
+        self.check_obj(a)
 
-        b = bitarray(endian='big')
-        b.frombytes(b'ABC')
-        self.assertEqual(b.endian(), 'big')
-        self.assertIsInstance(b.endian(), str)
-        self.check_obj(b)
+        # b = bitarray(endian='big')
+        # b.frombytes(b'ABC')
+        # self.assertEqual(b.endian(), 'big')
+        # self.assertIsInstance(b.endian(), str)
+        # self.check_obj(b)
 
         # self.assertNotEqual(a, b)
         # self.assertEqual(a.tobytes(), b.tobytes())
 
     def test_endian_default(self):
-        _set_default_endian('big')
-        a_big = bitarray()
-        # _set_default_endian('little')
-        # a_little = bitarray()
-        _set_default_endian('big')
+        # _set_default_endian('big')
+        # a_big = bitarray()
+        _set_default_endian('little')
+        a_little = bitarray()
+        # _set_default_endian('big')
 
-        self.assertEqual(a_big.endian(), 'big')
-        # self.assertEqual(a_little.endian(), 'little')
+        # self.assertEqual(a_big.endian(), 'big')
+        self.assertEqual(a_little.endian(), 'little')
 
     def test_endian_wrong(self):
         self.assertRaises(TypeError, bitarray.__new__, bitarray, endian=0)
@@ -293,15 +293,15 @@ class CreateObjectTests(unittest.TestCase, Util):
 
         self.assertRaises(ValueError, bitarray.__new__, bitarray, '01012100')
 
-    def test_rawbytes(self):  # this representation is used for pickling
-        for s, r in [(b'\x00', ''), (b'\x07\xff', '1'), (b'\x03\xff', '11111'),
-                     (b'\x01\x87\xda', '10000111' '1101101')]:
-            self.assertEqual(bitarray(s, endian='big'),
-                             bitarray(r))
+    # def test_rawbytes(self):  # this representation is used for pickling
+        # for s, r in [(b'\x00', ''), (b'\x07\xff', '1'), (b'\x03\xff', '11111'),
+                     # (b'\x01\x87\xda', '10000111' '1101101')]:
+            # self.assertEqual(bitarray(s, endian='little'),
+                             # bitarray(r))
 
-        for i in range(1, 8):
-            self.assertRaises(ValueError, bitarray.__new__,
-                              bitarray, bytes(bytearray([i])))
+        # for i in range(1, 8):
+            # self.assertRaises(ValueError, bitarray.__new__,
+                              # bitarray, bytes(bytearray([i])))
 
     def test_bitarray_simple(self):
         for n in range(10):
@@ -417,7 +417,7 @@ class MetaDataTests(unittest.TestCase, Util):
         for endian in ['big']:#, 'little':
             for n in range(50):
                 bi = bitarray(n, endian).buffer_info()
-                self.assertEqual(bi[1], math.ceil(bits2bytes(n) / 8) * 8)  # bytes
+                self.assertEqual(bi[1], bits2bytes(n))  # bytes
                 self.assertEqual(bi[2], endian)         # endianness
                 #self.assertEqual(bi[3], 8 * bi[1] - n)  # unused
                 self.assertTrue(bi[4] >= bi[1])         # allocated
@@ -843,46 +843,46 @@ class MiscTests(unittest.TestCase, Util):
                 self.assertEqual(a[i], b[i + 1234])
 
     def test_endianness1(self):
-        # a = bitarray(endian='little')
-        # a.frombytes(b'\x01')
-        # self.assertEqual(a.to01(), '10000000')
+        a = bitarray(endian='little')
+        a.frombytes(b'\x01')
+        self.assertEqual(a.to01(), '10000000')
 
-        # b = bitarray(endian='little')
-        # b.frombytes(b'\x80')
-        # self.assertEqual(b.to01(), '00000001')
+        b = bitarray(endian='little')
+        b.frombytes(b'\x80')
+        self.assertEqual(b.to01(), '00000001')
 
-        c = bitarray(endian='big')
-        c.frombytes(b'\x80')
-        self.assertEqual(c.to01(), '10000000')
+        # c = bitarray(endian='big')
+        # c.frombytes(b'\x80')
+        # self.assertEqual(c.to01(), '10000000')
 
-        d = bitarray(endian='big')
-        d.frombytes(b'\x01')
-        self.assertEqual(d.to01(), '00000001')
+        # d = bitarray(endian='big')
+        # d.frombytes(b'\x01')
+        # self.assertEqual(d.to01(), '00000001')
 
         # self.assertEqual(a, c)
         # self.assertEqual(b, d)
 
-    # def test_endianness2(self):
-        # a = bitarray(8, endian='little')
-        # a.setall(False)
-        # a[0] = True
-        # self.assertEqual(a.tobytes(), b'\x01')
-        # a[1] = True
-        # self.assertEqual(a.tobytes(), b'\x03')
-        # a.frombytes(b' ')
-        # self.assertEqual(a.tobytes(), b'\x03 ')
-        # self.assertEqual(a.to01(), '1100000000000100')
-
-    def test_endianness3(self):
-        a = bitarray(8, endian='big')
+    def test_endianness2(self):
+        a = bitarray(8, endian='little')
         a.setall(False)
-        a[7] = True
+        a[0] = True
         self.assertEqual(a.tobytes(), b'\x01')
-        a[6] = True
+        a[1] = True
         self.assertEqual(a.tobytes(), b'\x03')
         a.frombytes(b' ')
         self.assertEqual(a.tobytes(), b'\x03 ')
-        self.assertEqual(a.to01(), '0000001100100000')
+        self.assertEqual(a.to01(), '1100000000000100')
+
+    # def test_endianness3(self):
+        # a = bitarray(8, endian='big')
+        # a.setall(False)
+        # a[7] = True
+        # self.assertEqual(a.tobytes(), b'\x01')
+        # a[6] = True
+        # self.assertEqual(a.tobytes(), b'\x03')
+        # a.frombytes(b' ')
+        # self.assertEqual(a.tobytes(), b'\x03 ')
+        # self.assertEqual(a.to01(), '0000001100100000')
 
     # def test_endianness4(self):
         # a = bitarray('00100000', endian='big')
@@ -1988,14 +1988,13 @@ class BytesTests(unittest.TestCase, Util):
             yield os.urandom(n)
 
     def test_frombytes_simple(self):
-        a = bitarray(endian='big')
+        a = bitarray(endian='little')
         a.frombytes(b'A')
-        self.assertEqual(a, bitarray('01000001'))
+        self.assertEqual(a, bitarray('10000010'))
 
         b = a
         b.frombytes(b'BC')
-        self.assertEQUAL(b, bitarray('01000001' '01000010' '01000011',
-                                     endian='big'))
+        self.assertEQUAL(b, bitarray('10000010' '01000010' '11000010'))
         self.assertTrue(b is a)
 
     def test_frombytes_empty(self):
@@ -2028,7 +2027,7 @@ class BytesTests(unittest.TestCase, Util):
         self.assertEqual(a.tobytes(), b'')
 
     def test_tobytes_endian(self):
-        for end in ['big']:#, 'little':
+        for end in ['little']:#, 'little':
             a = bitarray(endian=end)
             a.frombytes(b'foo')
             self.assertEqual(a.tobytes(), b'foo')
@@ -2085,7 +2084,7 @@ class BytesTests(unittest.TestCase, Util):
             self.assertRaises(TypeError, a.unpack, b'0', '1')
 
     def test_pack_simple(self):
-        for endian in ["big"]:#'little', 'big':
+        for endian in ["little"]:#'little', 'big':
             _set_default_endian(endian)
             a = bitarray()
             a.pack(b'\x00')
@@ -2174,15 +2173,15 @@ class FileTests(unittest.TestCase, Util):
             fo.write(b'Foo')
         self.assertFileSize(3)
 
-        a = bitarray(endian='big')
-        with open(self.tmpfname, 'rb') as fi:
-            a.fromfile(fi)
-        self.assertEqual(a, bitarray('01000110' '01101111' '01101111'))
-
-        # a = bitarray(endian='little')
+        # a = bitarray(endian='big')
         # with open(self.tmpfname, 'rb') as fi:
             # a.fromfile(fi)
-        # self.assertEqual(a, bitarray('01100010' '11110110' '11110110'))
+        # self.assertEqual(a, bitarray('01000110' '01101111' '01101111'))
+
+        a = bitarray(endian='little')
+        with open(self.tmpfname, 'rb') as fi:
+            a.fromfile(fi)
+        self.assertEqual(a, bitarray('01100010' '11110110' '11110110'))
 
     def test_fromfile_wrong_args(self):
         a = bitarray()
@@ -2292,7 +2291,7 @@ class FileTests(unittest.TestCase, Util):
         self.assertFileSize(0)
 
     def test_tofile_Foo(self):
-        a = bitarray('0100011' '001101111' '01101111', endian='big')
+        a = bitarray('011000101111011011110110')
         b = a.copy()
         with open(self.tmpfname, 'wb') as f:
             a.tofile(f)
@@ -2344,8 +2343,8 @@ class FileTests(unittest.TestCase, Util):
 
     def test_tofile_ones(self):
         for n in range(20):
-            # a = n * bitarray('1', endian='little')
-            a = n * bitarray('1', endian='big')
+            a = n * bitarray('1', endian='little')
+            # a = n * bitarray('1', endian='big')
             with open(self.tmpfname, 'wb') as fo:
                 a.tofile(fo)
 
@@ -2353,8 +2352,8 @@ class FileTests(unittest.TestCase, Util):
             self.assertEqual(len(raw), bits2bytes(len(a)))
             # when we the the unused bits in a, we can compare
             a.fill()
-            # b = bitarray(endian='little')
-            b = bitarray(endian='big')
+            b = bitarray(endian='little')
+            # b = bitarray(endian='big')
             b.frombytes(raw)
             self.assertEqual(a, b)
 
@@ -2681,13 +2680,13 @@ tests.append(PrefixCodeTests)
 class BufferInterfaceTests(unittest.TestCase):
 
     def test_read_simple(self):
-        a = bitarray('01000001' '01000010' '01000011', endian='big')
+        a = bitarray('10000010' '01000010' '11000010')
         v = memoryview(a)
         self.assertEqual(len(v), 3)
         self.assertEqual(v[0], 65 if is_py3k else 'A')
         self.assertEqual(v.tobytes(), b'ABC')
         a[13] = 1
-        self.assertEqual(v.tobytes(), b'AFC')
+        self.assertEqual(v.tobytes(), b'AbC')
 
     def test_read_random(self):
         a = bitarray()
@@ -2699,7 +2698,7 @@ class BufferInterfaceTests(unittest.TestCase):
         self.assertEqual(v.tobytes(), a.tobytes())
 
     def test_resize(self):
-        a = bitarray('01000001' '01000010' '01000011', endian='big')
+        a = bitarray('01000001' '01000010' '01000011', endian='little')
         v = memoryview(a)
         self.assertRaises(BufferError, a.append, 1)
         self.assertRaises(BufferError, a.clear)
