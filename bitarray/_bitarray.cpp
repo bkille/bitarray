@@ -84,6 +84,7 @@ newbitarrayobject(PyTypeObject* type, idx_t nbits, int endian)
         return NULL;
     }
     obj->weakreflist = NULL;
+    obj->ob_exports = 0;
     obj->bits = bit::bit_iterator(obj->ob_item->begin());
     return (PyObject *) obj;
 }
@@ -280,6 +281,12 @@ set_item(bitarrayobject* self, idx_t i, PyObject *v)
 static int
 append_item(bitarrayobject* self, PyObject *item)
 {
+    if (self->ob_exports > 0) {
+        PyErr_SetString(PyExc_BufferError,
+                        "cannot resize bitarray that is exporting buffers");
+        return -1;
+    }
+
     if ((8*sizeof(word_type) * self->ob_item->size()) == self->nbits) {
         self->ob_item->push_back(static_cast<word_type>(0));
         Py_SIZE(self) = self->ob_item->size() * sizeof(word_type);
@@ -1055,13 +1062,35 @@ which may cause a memory error if the bitarray is very large.");
 static PyObject *
 bitarray_frombytes(bitarrayobject *self, PyObject *bytes)
 {
+    Py_ssize_t nbytes;
+    Py_ssize_t t, p;
+
     if (!PyBytes_Check(bytes)) {
         PyErr_SetString(PyExc_TypeError, "bytes expected");
         return NULL;
     }
-    //TODO catch errors from extend_bytes
-    extend_bytes(self, bytes);
+    nbytes = PyBytes_GET_SIZE(bytes);
+    if (nbytes == 0)
+        Py_RETURN_NONE;
 
+    /* Before we extend the raw bytes with the new data, we need to store
+       the current size and pad the last byte, as our bitarray size might
+       not be a multiple of 8.  After extending, we remove the padding
+       bits again.
+    */
+    t = self->nbits;
+    p = setunused(self);
+    self->nbits += p;
+    assert(self->nbits % 8 == 0);
+
+    if (resize(self, self->nbits + BITS(nbytes)) < 0)
+        return NULL;
+
+    memcpy(&(*self->ob_item)[0] + (Py_SIZE(self) - nbytes),
+           PyBytes_AsString(bytes), (size_t) nbytes);
+
+    if (delete_n(self, t, p) < 0)
+        return NULL;
     Py_RETURN_NONE;
 }
 
@@ -1155,7 +1184,7 @@ bitarray_tofile(bitarrayobject *self, PyObject *f)
         assert(size >= 0 && offset + size <= nbytes);
         /* basically: f.write(memoryview(self)[offset:offset + size] */
         res = PyObject_CallMethod(f, "write", BYTES_SIZE_FMT,
-                                  self->ob_item + offset, size);
+                                  (char *) &(*self->ob_item)[0] + offset, size);
         if (res == NULL)
             return NULL;
         Py_DECREF(res);  /* drop write result */
