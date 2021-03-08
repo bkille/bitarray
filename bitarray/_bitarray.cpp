@@ -31,7 +31,7 @@
 #endif /* HAVE_SYS_TYPES_H */
 #endif /* !STDC_HEADERS */
 
-static int default_endian = ENDIAN_BIG;
+static int default_endian = ENDIAN_LITTLE;
 
 extern PyTypeObject Bitarray_Type;
 
@@ -140,7 +140,6 @@ delete_n(bitarrayobject *self, Py_ssize_t start, Py_ssize_t n)
     assert(0 <= n && n <= self->nbits - start);
     if (n == 0)
         return 0;
-
     //copy_n(self, start, self, start + n, self->nbits - start - n);
     bit::shift_left(self->bits + start, self->bits + self->nbits, n);
     return resize(self, self->nbits - n);
@@ -435,9 +434,9 @@ extend_bytes(bitarrayobject *self, PyObject *bytes) {
             reinterpret_cast<unsigned char *>(bytes_as_str));
     auto pystr_end = bit::bit_iterator<unsigned char *>(
             reinterpret_cast<unsigned char *>(bytes_as_str + nbytes));
-    for (auto it = pystr_begin.base(); it != pystr_end.base(); ++it) {
-        *it = bit::_bitswap(*it);
-    }
+    //for (auto it = pystr_begin.base(); it != pystr_end.base(); ++it) {
+        //*it = bit::_bitswap(*it);
+    //}
     bit::copy(pystr_begin, pystr_end, self->bits + t);
 
     if (delete_n(self, t, p) < 0)
@@ -848,7 +847,7 @@ bitarray_reduce(bitarrayobject *self)
         goto error;
     }
     data[0] = (char) setunused(self);
-    memcpy(data + 1, self->ob_item, (size_t) nbytes);
+    memcpy(data + 1, &(*self->ob_item)[0], (size_t) nbytes);
     repr = PyBytes_FromStringAndSize(data, nbytes + 1);
     if (repr == NULL)
         goto error;
@@ -1077,9 +1076,9 @@ static PyObject *
 bitarray_tobytes(bitarrayobject *self)
 {
     setunused(self);
-    //bitarray_byteswap(self);
+    //bitarray_bytereverse(self);
     auto ret = PyBytes_FromStringAndSize((char*)(&(*self->ob_item)[0]), BYTES(self->nbits));
-    //bitarray_byteswap(self);
+    //bitarray_bytereverse(self);
     return ret;
 }
 
@@ -1659,7 +1658,8 @@ delslice(bitarrayobject *self, PyObject *slice)
 
     if (step == 1) {
         assert(stop - start == slicelength);
-        return delete_n(self, start, slicelength);
+        delete_n(self, start, slicelength);
+        return 0;
     }
     else {
         Py_ssize_t i, j;
@@ -2755,7 +2755,7 @@ bitarray_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
                 return NULL;
             memcpy((char*)&(*((bitarrayobject *) res)->ob_item)[0], data + 1,
                    (size_t) nbytes - 1);
-            bitarray_bytereverse((bitarrayobject*) res);
+            //bitarray_bytereverse((bitarrayobject*) res);
             return res;
         }
     }

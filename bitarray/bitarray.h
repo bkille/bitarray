@@ -24,7 +24,8 @@
 #include "bit.hpp"
 
 typedef long long int idx_t;
-typedef unsigned long long int word_type;
+//typedef unsigned long long int word_type;
+typedef unsigned char word_type;
 
 /* ob_size is the byte count of the buffer, not the number of elements.
    The number of elements (bits) is nbits. */
