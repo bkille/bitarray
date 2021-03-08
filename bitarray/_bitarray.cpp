@@ -116,7 +116,7 @@ copy_n(bitarrayobject* self, idx_t a,
     // TODO has to be a better way to do this...
     if (self->bits + a < other->bits + b 
             || self->bits + a >= other->bits + b + n) {
-        std::copy(
+        bit::copy(
             other->bits + b, 
             other->bits + b + n, 
             self->bits + a
@@ -876,7 +876,7 @@ bitarray_reverse(bitarrayobject *self)
     if (self->nbits < 2)
         Py_RETURN_NONE;
 
-    std::reverse(self->bits, bit::next(self->bits, self->nbits));
+    bit::reverse(self->bits, bit::next(self->bits, self->nbits));
     Py_RETURN_NONE;
 }
 
@@ -1687,8 +1687,7 @@ delslice(bitarrayobject *self, PyObject *slice)
 
     if (step == 1) {
         assert(stop - start == slicelength);
-        delete_n(self, start, slicelength);
-        return 0;
+        return delete_n(self, start, slicelength);
     }
     else {
         Py_ssize_t i, j;
